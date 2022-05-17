@@ -155,7 +155,7 @@ class StoreTailer extends AbstractCloseable
         return privateWire();
     }
 
-    public Wire privateWire() {
+    public @Nullable Wire privateWire() {
         return context.wire();
     }
 
@@ -216,8 +216,9 @@ class StoreTailer extends AbstractCloseable
             if (tryAgain)
                 next = next0(includeMetaData);
 
-            if (context.present(next)) {
-                Bytes<?> bytes = context.wire().bytes();
+            Wire wire = context.wire();
+            if (wire != null && context.present(next)) {
+                Bytes<?> bytes = wire.bytes();
                 context.setStart(bytes.readPosition() - 4);
                 readingDocumentFound = true;
                 address = bytes.addressForRead(bytes.readPosition(), 4);
@@ -236,7 +237,7 @@ class StoreTailer extends AbstractCloseable
                 state = TailerState.END_OF_CYCLE;
             }
 
-            setAddress(context.wire() != null);
+            setAddress(wire != null);
 
         } catch (StreamCorruptedException e) {
             throw new IllegalStateException(e);
@@ -645,11 +646,15 @@ class StoreTailer extends AbstractCloseable
 
         index(index);
         final ScanResult scanResult = this.store().moveToIndexForRead(this, sequenceNumber);
-        final Bytes<?> bytes = privateWire().bytes();
         switch (scanResult) {
             case FOUND:
-                state = FOUND_IN_CYCLE;
-                moveToState.onSuccessfulLookup(index, direction, bytes.readPosition());
+                Wire privateWire = privateWire();
+                if (privateWire == null)
+                    state = END_OF_CYCLE;
+                else {
+                    state = FOUND_IN_CYCLE;
+                    moveToState.onSuccessfulLookup(index, direction, privateWire.bytes().readPosition());
+                }
                 break;
 
             case NOT_REACHED:
